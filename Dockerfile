@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY operator/ ./operator/
 
 # Run as non-root user
-RUN useradd -m -u 1000 operator && \
+RUN useradd -m operator && \
     chown -R operator:operator /app
 USER operator
 
