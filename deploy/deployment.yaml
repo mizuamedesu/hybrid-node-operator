@@ -23,6 +23,11 @@ spec:
       nodeSelector:
         node-type: gcp-permanent
 
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+
       priorityClassName: system-cluster-critical
 
       containers:
@@ -33,6 +38,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: node-failover-config
+
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/secrets/google/key.json
+
+          volumeMounts:
+            - name: gcp-credentials
+              mountPath: /var/secrets/google
+              readOnly: true
 
           resources:
             requests:
@@ -58,3 +72,8 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
+
+      volumes:
+        - name: gcp-credentials
+          secret:
+            secretName: gcp-credentials
