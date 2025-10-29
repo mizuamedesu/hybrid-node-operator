@@ -1,0 +1,7 @@
+kopf
+kubernetes
+google-cloud-compute
+google-auth
+python-dateutil
+pyyaml
+python-json-logger

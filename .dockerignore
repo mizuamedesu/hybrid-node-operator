@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+.venv
+venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Tests
+tests/
+*.test
+.pytest_cache
+.coverage
+
+# Documentation
+*.md
+docs/
+
+# Deployment files
+deploy/
+
+# OS
+.DS_Store
+Thumbs.db

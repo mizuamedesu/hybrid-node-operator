@@ -1,0 +1,28 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: node-failover-config
+  namespace: default
+data:
+  # GCP設定
+  GCP_PROJECT_ID: "YOUR_PROJECT_ID"
+  GCP_ZONE: "asia-northeast1-c"
+  GCP_MACHINE_TYPE: "n2-standard-4"
+  GCP_NETWORK: "YOUR_VPC_NAME"
+  GCP_SUBNET: "YOUR_SUBNET_NAME"
+  GCP_IMAGE_PROJECT: "YOUR_PROJECT_ID"
+  GCP_IMAGE_NAME: "YOUR_CUSTOM_IMAGE_NAME"
+
+  # Kubernetes設定
+  K8S_API_SERVER: "YOUR_API_SERVER_IP:6443"
+
+  # タイミング設定
+  ONPREM_RECOVERY_WAIT_MINUTES: "10"
+  GAMESERVER_MAX_WAIT_HOURS: "3"
+  NODE_FLAPPING_GRACE_SECONDS: "30"
+  RECONCILIATION_INTERVAL_SECONDS: "60"
+  MAX_VM_CREATION_ATTEMPTS: "3"
+
+  # ログ設定
+  LOG_LEVEL: "INFO"

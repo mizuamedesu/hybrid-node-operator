@@ -1,0 +1,60 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-failover-operator
+  namespace: default
+  labels:
+    app: node-failover-operator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: node-failover-operator
+  template:
+    metadata:
+      labels:
+        app: node-failover-operator
+    spec:
+      serviceAccountName: node-failover-operator
+
+      nodeSelector:
+        node-type: gcp-permanent
+
+      priorityClassName: system-cluster-critical
+
+      containers:
+        - name: operator
+          image: YOUR_REGISTRY/node-failover-operator:latest
+          imagePullPolicy: Always
+
+          envFrom:
+            - configMapRef:
+                name: node-failover-config
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
