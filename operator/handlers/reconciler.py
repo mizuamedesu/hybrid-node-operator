@@ -4,9 +4,9 @@ import asyncio
 from datetime import datetime, timezone
 import kopf
 
-from operator.state import get_state_manager
-from operator.k8s.client import get_k8s_client
-from operator.gcp.compute import get_gcp_client
+from ..state import get_state_manager
+from ..k8s.client import get_k8s_client
+from ..gcp.compute import get_gcp_client
 
 logger = logging.getLogger(__name__)
 
