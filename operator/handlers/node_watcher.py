@@ -116,6 +116,14 @@ async def _create_failover_vm(node_name: str):
             return
 
         k8s_client = get_k8s_client()
+
+        copy_label_keys = os.getenv("GCP_NODE_COPY_LABELS", "").split(",")
+        copy_label_keys = [key.strip() for key in copy_label_keys if key.strip()]
+
+        all_labels = k8s_client.get_node_custom_labels(node_name)
+        onprem_labels = {k: v for k, v in all_labels.items() if k in copy_label_keys}
+        logger.info(f"Retrieved labels from node {node_name} to copy: {onprem_labels}")
+
         token_generator = get_token_generator(k8s_client.core_v1)
 
         token = token_generator.create_bootstrap_token(ttl_seconds=1800)
@@ -155,7 +163,7 @@ async def _create_failover_vm(node_name: str):
             })
 
             state_manager.update_vm_created(node_name, vm_name)
-            asyncio.create_task(_wait_and_label_node(vm_name))
+            asyncio.create_task(_wait_and_label_node(vm_name, onprem_labels))
 
         else:
             raise Exception("VM creation failed (check GCP API logs)")
@@ -177,7 +185,7 @@ async def _create_failover_vm(node_name: str):
             await _create_failover_vm(node_name)
 
 
-async def _wait_and_label_node(vm_name: str):
+async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
     """ノード参加待機とラベル付与"""
     k8s_client = get_k8s_client()
 
@@ -188,8 +196,10 @@ async def _wait_and_label_node(vm_name: str):
     if joined:
         labels = {
             "node-type": "gcp-temporary",
-            "game-runner": "true"
+            "node-location": "gcp"
         }
+
+        labels.update(onprem_labels)
 
         success = k8s_client.patch_node_labels(vm_name, labels)
 

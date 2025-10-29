@@ -218,6 +218,32 @@ class KubernetesClient:
             logger.error(f"Error getting CA cert hash: {e}")
             return None
 
+    def get_node_custom_labels(self, node_name: str) -> Dict[str, str]:
+        """ノードのカスタムラベルを取得（K8sデフォルトラベルを除外）"""
+        try:
+            node = self.core_v1.read_node(node_name)
+            if not node.metadata or not node.metadata.labels:
+                return {}
+
+            k8s_prefix_list = [
+                "beta.kubernetes.io/",
+                "kubernetes.io/",
+                "node-role.kubernetes.io/",
+                "node.kubernetes.io/"
+            ]
+
+            custom_labels = {}
+            for key, value in node.metadata.labels.items():
+                if not any(key.startswith(prefix) for prefix in k8s_prefix_list):
+                    custom_labels[key] = value
+
+            logger.debug(f"Custom labels for node {node_name}: {custom_labels}")
+            return custom_labels
+
+        except ApiException as e:
+            logger.error(f"Error getting labels for node {node_name}: {e}")
+            return {}
+
 
 _k8s_client: Optional[KubernetesClient] = None
 

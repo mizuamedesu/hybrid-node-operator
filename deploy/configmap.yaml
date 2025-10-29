@@ -17,6 +17,9 @@ data:
   # Kubernetes設定
   K8S_API_SERVER: "YOUR_API_SERVER_IP:6443"
 
+  # GCPノードラベル設定
+  GCP_NODE_COPY_LABELS: "hardware"
+
   # タイミング設定
   ONPREM_RECOVERY_WAIT_MINUTES: "10"
   GAMESERVER_MAX_WAIT_HOURS: "3"
