@@ -15,11 +15,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy operator code
 COPY operator/ ./operator/
 
-# Run as non-root user
-RUN useradd -m operator && \
-    chown -R operator:operator /app
-USER operator
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
