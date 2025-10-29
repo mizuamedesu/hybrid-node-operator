@@ -219,8 +219,17 @@ def get_gcp_client(
     image_project: Optional[str] = None,
     image_name: Optional[str] = None
 ) -> GCPComputeClient:
+    import os
     global _gcp_client
     if _gcp_client is None:
+        project_id = project_id or os.getenv("GCP_PROJECT_ID")
+        zone = zone or os.getenv("GCP_ZONE")
+        machine_type = machine_type or os.getenv("GCP_MACHINE_TYPE", "n2-standard-4")
+        network = network or os.getenv("GCP_NETWORK")
+        subnet = subnet or os.getenv("GCP_SUBNET")
+        image_project = image_project or os.getenv("GCP_IMAGE_PROJECT")
+        image_name = image_name or os.getenv("GCP_IMAGE_NAME")
+
         if not all([project_id, zone, machine_type, network, subnet, image_project, image_name]):
             raise ValueError("All parameters required when initializing GCPComputeClient")
 

@@ -144,7 +144,6 @@ async def on_startup(**kwargs):
 
     state_manager = get_state_manager()
     k8s_client = get_k8s_client()
-    gcp_client = get_gcp_client()
 
     onprem_nodes = k8s_client.list_nodes_by_label("node-type=onpremise")
 
