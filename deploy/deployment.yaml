@@ -27,7 +27,7 @@ spec:
 
       containers:
         - name: operator
-          image: YOUR_REGISTRY/node-failover-operator:latest
+          image: ghcr.io/mizuamedesu/hybrid-node-operator:latest
           imagePullPolicy: Always
 
           envFrom:
