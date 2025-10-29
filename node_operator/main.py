@@ -54,8 +54,8 @@ def validate_environment():
 
 
 def initialize_clients():
-    from operator.gcp.compute import get_gcp_client
-    from operator.k8s.client import get_k8s_client
+    from node_operator.gcp.compute import get_gcp_client
+    from node_operator.k8s.client import get_k8s_client
 
     k8s_client = get_k8s_client()
     logging.info("Kubernetes client initialized")
