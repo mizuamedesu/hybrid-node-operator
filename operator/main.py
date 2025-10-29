@@ -74,7 +74,7 @@ def initialize_clients():
     return k8s_client, gcp_client
 
 
-from .handlers import node_watcher, reconciler
+from operator.handlers import node_watcher, reconciler
 
 
 @kopf.on.login()

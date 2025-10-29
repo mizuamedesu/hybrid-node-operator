@@ -17,6 +17,7 @@ COPY operator/ ./operator/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Run the operator
 CMD ["kopf", "run", "--standalone", "--liveness=http://0.0.0.0:8080/healthz", "operator/main.py"]
