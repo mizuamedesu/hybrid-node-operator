@@ -98,7 +98,7 @@ def get_token_generator(core_v1_api: Optional[client.CoreV1Api] = None) -> Token
     global _token_generator
     if _token_generator is None:
         if core_v1_api is None:
-            from operator.k8s.client import get_k8s_client
+            from node_operator.k8s.client import get_k8s_client
             k8s_client = get_k8s_client()
             core_v1_api = k8s_client.core_v1
         _token_generator = TokenGenerator(core_v1_api)

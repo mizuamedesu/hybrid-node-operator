@@ -4,11 +4,11 @@ import os
 from typing import Dict, Any
 import kopf
 
-from operator.state import get_state_manager
-from operator.k8s.client import get_k8s_client
-from operator.k8s.token import get_token_generator
-from operator.gcp.compute import get_gcp_client
-from operator.gcp.cloud_init import generate_startup_script, generate_vm_name
+from node_operator.state import get_state_manager
+from node_operator.k8s.client import get_k8s_client
+from node_operator.k8s.token import get_token_generator
+from node_operator.gcp.compute import get_gcp_client
+from node_operator.gcp.cloud_init import generate_startup_script, generate_vm_name
 
 logger = logging.getLogger(__name__)
 
