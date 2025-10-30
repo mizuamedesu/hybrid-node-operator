@@ -209,9 +209,9 @@ class KubernetesClient:
             kubeconfig = yaml.safe_load(kubeconfig_data)
 
             ca_cert_b64 = kubeconfig["clusters"][0]["cluster"]["certificate-authority-data"]
-            ca_cert_der = base64.b64decode(ca_cert_b64)
+            ca_cert_pem = base64.b64decode(ca_cert_b64)
 
-            cert = x509.load_der_x509_certificate(ca_cert_der)
+            cert = x509.load_pem_x509_certificate(ca_cert_pem)
             public_key_der = cert.public_key().public_bytes(
                 encoding=serialization.Encoding.DER,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
