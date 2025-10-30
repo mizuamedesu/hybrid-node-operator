@@ -180,11 +180,44 @@ async def on_startup(**kwargs):
                 state_manager.update_vm_created(node_name, matching_vm)
 
                 gcp_node = k8s_client.get_node_by_name(matching_vm)
-                if gcp_node and gcp_node.spec.taints:
-                    for taint in gcp_node.spec.taints:
-                        if taint.key == "temporary-node":
-                            state_manager.update_taint_applied(node_name)
-                            break
+                if gcp_node:
+                    if gcp_node.spec.taints:
+                        for taint in gcp_node.spec.taints:
+                            if taint.key == "temporary-node":
+                                state_manager.update_taint_applied(node_name)
+                                break
+
+                    # ラベルの確認と不足分の適用
+                    current_labels = gcp_node.metadata.labels or {}
+
+                    # オンプレノードからコピーするラベルを取得
+                    copy_label_keys = os.getenv("GCP_NODE_COPY_LABELS", "").split(",")
+                    copy_label_keys = [key.strip() for key in copy_label_keys if key.strip()]
+
+                    onprem_node = k8s_client.get_node_by_name(node_name)
+                    onprem_labels = {}
+                    if onprem_node:
+                        all_labels = k8s_client.get_node_custom_labels(node_name)
+                        onprem_labels = {k: v for k, v in all_labels.items() if k in copy_label_keys}
+
+                    # 期待されるラベルを構築
+                    expected_labels = {
+                        "node-type": "gcp-temporary",
+                        "node-location": "gcp"
+                    }
+                    expected_labels.update(onprem_labels)
+
+                    # 不足しているラベルを確認
+                    missing_labels = {k: v for k, v in expected_labels.items()
+                                     if current_labels.get(k) != v}
+
+                    if missing_labels:
+                        logger.info(f"Applying missing labels to {matching_vm}: {missing_labels}")
+                        success = k8s_client.patch_node_labels(matching_vm, expected_labels)
+                        if success:
+                            logger.info(f"Successfully applied labels to {matching_vm}")
+                        else:
+                            logger.error(f"Failed to apply labels to {matching_vm}")
 
             else:
                 logger.info(f"No existing VM found for {node_name}, will create one")

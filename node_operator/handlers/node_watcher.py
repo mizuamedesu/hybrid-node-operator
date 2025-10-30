@@ -191,7 +191,7 @@ async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
 
     logger.info(f"Waiting for node {vm_name} to join the cluster...")
 
-    joined = k8s_client.wait_for_node_join(vm_name, timeout_seconds=300)
+    joined = await k8s_client.wait_for_node_join(vm_name, timeout_seconds=300)
 
     if joined:
         labels = {

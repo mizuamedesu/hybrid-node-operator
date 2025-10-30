@@ -167,9 +167,9 @@ class KubernetesClient:
             logger.error(f"Error counting GameServer pods on node {node_name}: {e}")
             return 999
 
-    def wait_for_node_join(self, expected_node_name: str, timeout_seconds: int = 300) -> bool:
+    async def wait_for_node_join(self, expected_node_name: str, timeout_seconds: int = 300) -> bool:
         """ノードのクラスタ参加を待機"""
-        import time
+        import asyncio
 
         elapsed = 0
         interval = 10
@@ -180,7 +180,7 @@ class KubernetesClient:
                 logger.info(f"Node {expected_node_name} has joined the cluster")
                 return True
 
-            time.sleep(interval)
+            await asyncio.sleep(interval)
             elapsed += interval
             logger.debug(f"Waiting for node {expected_node_name} to join... ({elapsed}s)")
 
