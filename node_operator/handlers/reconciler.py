@@ -92,6 +92,13 @@ async def _apply_taints_to_recovered_nodes(state_manager, k8s_client):
             state.recovery_detected_at = None
             continue
 
+        # GCPノードが存在するか確認
+        gcp_node = k8s_client.get_node_by_name(state.gcp_vm_name)
+        if not gcp_node:
+            logger.warning(f"GCP node {state.gcp_vm_name} no longer exists, cleaning up state")
+            state_manager.remove_node(node_name)
+            continue
+
         logger.info(f"Applying taint to temporary node {state.gcp_vm_name}", extra={
             "onprem_node": node_name,
             "gcp_node": state.gcp_vm_name,
