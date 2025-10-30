@@ -62,7 +62,39 @@ deploy/configmap.yaml
 
 ### GCP認証情報
 
+#### 必要な権限
+
+Service Accountには以下のIAM権限が必要:
+
+| 権限 | 理由 |
+|---|---|
+| `roles/compute.instanceAdmin.v1` | VM作成・削除・起動・停止 |
+
+#### 必要なAPIスコープ
+
+- `https://www.googleapis.com/auth/compute` - Compute Engine API
+
+#### Service Account作成手順
+
+```bash
+gcloud iam service-accounts create node-operator \
+  --display-name "Node Failover Operator" \
+  --project YOUR_PROJECT_ID
+
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+  --member="serviceAccount:node-operator@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/compute.instanceAdmin.v1"
+
+gcloud iam service-accounts keys create key.json \
+  --iam-account=node-operator@YOUR_PROJECT_ID.iam.gserviceaccount.com
+```
+
+#### Kubernetes Secretに格納
+
 ```bash
 kubectl create secret generic gcp-credentials \
-  --from-file=key.json=/path/to/service-account-key.json
+  --from-file=key.json=./key.json
+
+# 確認
+kubectl get secret gcp-credentials
 ```
