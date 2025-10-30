@@ -67,6 +67,11 @@ class GCPComputeClient:
             network_interface.subnetwork = (
                 f"projects/{self.project_id}/regions/{self.region}/subnetworks/{self.subnet}"
             )
+            # External IP設定
+            access_config = compute_v1.AccessConfig()
+            access_config.type_ = "ONE_TO_ONE_NAT"
+            access_config.name = "External NAT"
+            network_interface.access_configs = [access_config]
             instance.network_interfaces = [network_interface]
 
             # Startup script
