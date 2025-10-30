@@ -24,8 +24,56 @@ async def reconcile_failovers(**kwargs):
     k8s_client = get_k8s_client()
     gcp_client = get_gcp_client()
 
+    await _ensure_gcp_node_labels(state_manager, k8s_client)
     await _apply_taints_to_recovered_nodes(state_manager, k8s_client)
     await _cleanup_ready_vms(state_manager, k8s_client, gcp_client)
+
+
+async def _ensure_gcp_node_labels(state_manager, k8s_client):
+    """GCPノードに必要なラベルが付いているか確認し、不足していれば適用"""
+    failed_nodes = state_manager.get_all_failed_nodes()
+
+    for node_name in failed_nodes:
+        state = state_manager.get_state(node_name)
+        if not state or not state.gcp_vm_name:
+            continue
+
+        gcp_vm_name = state.gcp_vm_name
+
+        gcp_node = k8s_client.get_node_by_name(gcp_vm_name)
+        if not gcp_node:
+            continue
+
+        current_labels = gcp_node.metadata.labels or {}
+
+        # オンプレノードからコピーするラベルを取得
+        copy_label_keys = os.getenv("GCP_NODE_COPY_LABELS", "").split(",")
+        copy_label_keys = [key.strip() for key in copy_label_keys if key.strip()]
+
+        onprem_node = k8s_client.get_node_by_name(node_name)
+        onprem_labels = {}
+        if onprem_node:
+            all_labels = k8s_client.get_node_custom_labels(node_name)
+            onprem_labels = {k: v for k, v in all_labels.items() if k in copy_label_keys}
+
+        # 期待されるラベルを構築
+        expected_labels = {
+            "node-type": "gcp-temporary",
+            "node-location": "gcp"
+        }
+        expected_labels.update(onprem_labels)
+
+        # 不足しているラベルを確認
+        missing_labels = {k: v for k, v in expected_labels.items()
+                         if current_labels.get(k) != v}
+
+        if missing_labels:
+            logger.info(f"Applying missing labels to {gcp_vm_name}: {missing_labels}")
+            success = k8s_client.patch_node_labels(gcp_vm_name, expected_labels)
+            if success:
+                logger.info(f"Successfully applied labels to {gcp_vm_name}")
+            else:
+                logger.error(f"Failed to apply labels to {gcp_vm_name}")
 
 
 async def _apply_taints_to_recovered_nodes(state_manager, k8s_client):
