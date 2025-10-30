@@ -206,6 +206,20 @@ class GCPComputeClient:
             logger.error(f"Error listing managed instances: {e}")
             return []
 
+    def list_instances(self) -> list:
+        try:
+            request = compute_v1.ListInstancesRequest()
+            request.project = self.project_id
+            request.zone = self.zone
+            request.filter = "labels.managed-by=node-failover-operator"
+
+            instances = self.instances_client.list(request=request)
+            return list(instances)
+
+        except google_exceptions.GoogleAPIError as e:
+            logger.error(f"Error listing instances: {e}")
+            return []
+
 
 _gcp_client: Optional[GCPComputeClient] = None
 

@@ -215,3 +215,10 @@ async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
             "vm_name": vm_name,
             "event": "node_join_timeout"
         })
+
+        logger.warning(f"Deleting failed VM {vm_name}")
+        gcp_client = get_gcp_client()
+        if gcp_client.delete_instance(vm_name):
+            logger.info(f"Deleted failed VM {vm_name}")
+        else:
+            logger.error(f"Failed to delete VM {vm_name}")

@@ -163,6 +163,16 @@ async def on_startup(**kwargs):
                     matching_vm = gcp_node_name
                     break
 
+            if not matching_vm:
+                gcp_client = get_gcp_client()
+                vm_prefix = f"gcp-temp-{node_name.lower().replace('_', '-')}"
+                instances = gcp_client.list_instances()
+                for instance in instances:
+                    if instance.name.startswith(vm_prefix):
+                        matching_vm = instance.name
+                        logger.info(f"Found VM {matching_vm} in GCP (not yet joined to cluster)")
+                        break
+
             if matching_vm:
                 logger.info(f"Found existing temporary VM {matching_vm} for {node_name}")
 
