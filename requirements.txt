@@ -5,3 +5,4 @@ google-auth
 python-dateutil
 pyyaml
 python-json-logger
+cryptography

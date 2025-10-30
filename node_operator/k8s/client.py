@@ -193,6 +193,8 @@ class KubernetesClient:
             import hashlib
             import base64
             import yaml
+            from cryptography import x509
+            from cryptography.hazmat.primitives import serialization
 
             cm = self.core_v1.read_namespaced_config_map(
                 name="cluster-info",
@@ -209,7 +211,13 @@ class KubernetesClient:
             ca_cert_b64 = kubeconfig["clusters"][0]["cluster"]["certificate-authority-data"]
             ca_cert_der = base64.b64decode(ca_cert_b64)
 
-            ca_hash = hashlib.sha256(ca_cert_der).hexdigest()
+            cert = x509.load_der_x509_certificate(ca_cert_der)
+            public_key_der = cert.public_key().public_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+
+            ca_hash = hashlib.sha256(public_key_der).hexdigest()
 
             logger.info("Successfully calculated CA certificate hash")
             return ca_hash
