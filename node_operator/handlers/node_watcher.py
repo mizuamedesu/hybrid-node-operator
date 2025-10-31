@@ -76,7 +76,7 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
 
             if still_not_ready:
                 state_manager.add_failed_node(node_name)
-                asyncio.create_task(_create_failover_vm(node_name))
+                asyncio.create_task(create_failover_vm(node_name))
             else:
                 logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
         else:
@@ -114,7 +114,7 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
 
                 if still_not_ready:
                     state_manager.add_failed_node(node_name)
-                    asyncio.create_task(_create_failover_vm(node_name))
+                    asyncio.create_task(create_failover_vm(node_name))
                 else:
                     logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
             else:
@@ -150,7 +150,7 @@ def _check_node_ready(node: Dict[str, Any]) -> bool:
     return False
 
 
-async def _create_failover_vm(node_name: str):
+async def create_failover_vm(node_name: str):
     """フェイルオーバー用GCP VM作成"""
     state_manager = get_state_manager()
     state = state_manager.get_state(node_name)
@@ -235,8 +235,8 @@ async def _create_failover_vm(node_name: str):
                 "event": "gcp_vm_created"
             })
 
-            state_manager.update_vm_created(node_name, vm_name)
-            asyncio.create_task(_wait_and_label_node(vm_name, node_name, onprem_labels))
+        state_manager.update_vm_created(node_name, vm_name)
+        asyncio.create_task(_wait_and_label_node(vm_name, node_name, onprem_labels))
 
         else:
             raise Exception("VM creation failed (check GCP API logs)")
@@ -255,13 +255,11 @@ async def _create_failover_vm(node_name: str):
             delay = min(2 ** state.vm_creation_attempts * 60, 300)
             logger.info(f"Retrying VM creation in {delay}s...")
             await asyncio.sleep(delay)
-            await _create_failover_vm(node_name)
+            await create_failover_vm(node_name)
 
 
 async def _wait_and_label_node(vm_name: str, onprem_node_name: str, onprem_labels: Dict[str, str]):
     """ノード参加待機、ラベル付与、out-of-service taint付与"""
-    from .state import get_state_manager
-
     k8s_client = get_k8s_client()
     state_manager = get_state_manager()
 

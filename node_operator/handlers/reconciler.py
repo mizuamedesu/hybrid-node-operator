@@ -7,12 +7,14 @@ import kopf
 from node_operator.state import get_state_manager
 from node_operator.k8s.client import get_k8s_client
 from node_operator.gcp.compute import get_gcp_client
+from node_operator.handlers.node_watcher import create_failover_vm
 
 logger = logging.getLogger(__name__)
 
 RECONCILIATION_INTERVAL = int(os.getenv("RECONCILIATION_INTERVAL_SECONDS", "60"))
 ONPREM_RECOVERY_WAIT_SECONDS = int(os.getenv("ONPREM_RECOVERY_WAIT_MINUTES", "10")) * 60
 GAMESERVER_MAX_WAIT_SECONDS = int(os.getenv("GAMESERVER_MAX_WAIT_HOURS", "3")) * 3600
+NODE_FLAPPING_GRACE_SECONDS = int(os.getenv("NODE_FLAPPING_GRACE_SECONDS", "30"))
 
 
 @kopf.timer("", "v1", "nodes", interval=RECONCILIATION_INTERVAL, idle=30)
@@ -235,6 +237,28 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
                     logger.info(f"Waiting for {gameserver_count} GameServer(s) to drain from {gcp_node_name}")
 
 
+    async def _schedule_startup_failover(node_name: str):
+        logger.info(
+            f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating VM",
+            extra={"node_name": node_name, "source": "startup_reconciliation"}
+        )
+
+        await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
+
+        k8s_client = get_k8s_client()
+        still_not_ready = not k8s_client.is_node_ready(node_name)
+
+        if still_not_ready:
+            await create_failover_vm(node_name)
+        else:
+            state_manager = get_state_manager()
+            state_manager.remove_node(node_name)
+            logger.info(
+                "Node recovered during startup grace period, cleaned up state",
+                extra={"node_name": node_name}
+            )
+
+
 @kopf.on.startup()
 async def on_startup(**kwargs):
     """Operator起動時の状態再構築"""
@@ -324,7 +348,17 @@ async def on_startup(**kwargs):
                         logger.error(f"Failed to apply labels to {matching_vm}")
 
         elif not is_ready:
-            logger.info(f"No existing VM found for NotReady node {node_name}, will create one")
+            logger.info(
+                "No existing VM found for NotReady node, scheduling failover",
+                extra={"node_name": node_name}
+            )
+
+            if state_manager.get_state(node_name) is None:
+                state_manager.add_failed_node(node_name)
+            else:
+                logger.debug(f"State already present for {node_name}, skipping re-registration")
+
+            asyncio.create_task(_schedule_startup_failover(node_name))
 
     # out-of-service taintのクリーンアップ（Ready状態のノードから削除）
     await _cleanup_out_of_service_taints(k8s_client)
