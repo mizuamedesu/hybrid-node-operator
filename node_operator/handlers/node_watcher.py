@@ -33,7 +33,7 @@ async def debug_all_node_events(event: Dict[str, Any], **kwargs):
 
 @kopf.on.event("", "v1", "nodes", labels={"node-type": "onpremise"})
 async def on_node_event(event: Dict[str, Any], **kwargs):
-    logger.info("NODE EVENT HANDLER TRIGGEREDx)
+    logger.info("NODE EVENT HANDLER TRIGGERED")
     
     node = event.get("object", {})
     node_name = node.get("metadata", {}).get("name")
