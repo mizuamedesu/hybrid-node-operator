@@ -56,41 +56,46 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
             else:
                 logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
         else:
-            # 既にstateが存在する場合（再障害 or 前回のVM削除失敗）
-            logger.warning(f"Onprem node {node_name} failed again while state exists", extra={
-                "node_name": node_name,
-                "gcp_vm_name": current_state.gcp_vm_name,
-                "event": "onprem_node_re_failure"
-            })
+            # 既にstateが存在する場合
+            if current_state.recovery_detected_at:
+                # 一度復旧した後に再度NotReadyになった（真の再障害）
+                logger.warning(f"Onprem node {node_name} failed again after recovery", extra={
+                    "node_name": node_name,
+                    "gcp_vm_name": current_state.gcp_vm_name,
+                    "event": "onprem_node_re_failure"
+                })
 
-            # 古いVMが残っていれば削除
-            if current_state.gcp_vm_name:
-                logger.info(f"Cleaning up old VM {current_state.gcp_vm_name}")
-                gcp_client = get_gcp_client()
+                # 古いVMが残っていれば削除
+                if current_state.gcp_vm_name:
+                    logger.info(f"Cleaning up old VM {current_state.gcp_vm_name}")
+                    gcp_client = get_gcp_client()
+                    k8s_client = get_k8s_client()
+
+                    # Kubernetesノードを削除
+                    if k8s_client.get_node_by_name(current_state.gcp_vm_name):
+                        k8s_client.delete_node(current_state.gcp_vm_name)
+
+                    # GCP VMを削除
+                    if gcp_client.instance_exists(current_state.gcp_vm_name):
+                        await gcp_client.delete_instance(current_state.gcp_vm_name)
+
+                # stateをクリーンアップして新規VM作成
+                state_manager.remove_node(node_name)
+
+                logger.info(f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating new VM")
+                await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
+
                 k8s_client = get_k8s_client()
+                still_not_ready = not k8s_client.is_node_ready(node_name)
 
-                # Kubernetesノードを削除
-                if k8s_client.get_node_by_name(current_state.gcp_vm_name):
-                    k8s_client.delete_node(current_state.gcp_vm_name)
-
-                # GCP VMを削除
-                if gcp_client.instance_exists(current_state.gcp_vm_name):
-                    gcp_client.delete_instance(current_state.gcp_vm_name)
-
-            # stateをクリーンアップして新規VM作成
-            state_manager.remove_node(node_name)
-
-            logger.info(f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating new VM")
-            await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
-
-            k8s_client = get_k8s_client()
-            still_not_ready = not k8s_client.is_node_ready(node_name)
-
-            if still_not_ready:
-                state_manager.add_failed_node(node_name)
-                asyncio.create_task(_create_failover_vm(node_name))
+                if still_not_ready:
+                    state_manager.add_failed_node(node_name)
+                    asyncio.create_task(_create_failover_vm(node_name))
+                else:
+                    logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
             else:
-                logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
+                # VM作成中または作成直後（復旧検知前）の重複イベント
+                logger.debug(f"Ignoring duplicate NotReady event for {node_name} (VM already being created)")
 
     else:
         if current_state is not None and not current_state.recovery_detected_at:
@@ -185,7 +190,7 @@ async def _create_failover_vm(node_name: str):
             "created-at": str(int(state.failed_at.timestamp()) if hasattr(state.failed_at, 'timestamp') else 0)
         }
 
-        success = gcp_client.create_instance(
+        success = await gcp_client.create_instance(
             instance_name=vm_name,
             startup_script=startup_script,
             labels=labels
@@ -254,7 +259,7 @@ async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
 
         logger.warning(f"Deleting failed VM {vm_name}")
         gcp_client = get_gcp_client()
-        if gcp_client.delete_instance(vm_name):
+        if await gcp_client.delete_instance(vm_name):
             logger.info(f"Deleted failed VM {vm_name}")
         else:
             logger.error(f"Failed to delete VM {vm_name}")

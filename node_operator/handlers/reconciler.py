@@ -138,7 +138,7 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
         if not gcp_node:
             logger.info(f"Temporary node {gcp_node_name} already removed from cluster")
             if gcp_client.instance_exists(gcp_node_name):
-                gcp_client.delete_instance(gcp_node_name)
+                await gcp_client.delete_instance(gcp_node_name)
             state_manager.remove_node(onprem_node_name)
             continue
 
@@ -158,7 +158,7 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
 
             k8s_client.delete_node(gcp_node_name)
 
-            success = gcp_client.delete_instance(gcp_node_name)
+            success = await gcp_client.delete_instance(gcp_node_name)
 
             if success:
                 logger.info(f"Successfully deleted VM {gcp_node_name}", extra={

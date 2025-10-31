@@ -37,7 +37,7 @@ class GCPComputeClient:
             "machine_type": machine_type
         })
 
-    def create_instance(
+    async def create_instance(
         self,
         instance_name: str,
         startup_script: str,
@@ -103,7 +103,7 @@ class GCPComputeClient:
             request.instance_resource = instance
 
             operation = self.instances_client.insert(request=request)
-            self._wait_for_operation(operation.name)
+            await self._wait_for_operation(operation.name)
 
             logger.info(f"Successfully created instance {instance_name}")
             return True
@@ -115,7 +115,7 @@ class GCPComputeClient:
             })
             return False
 
-    def delete_instance(self, instance_name: str) -> bool:
+    async def delete_instance(self, instance_name: str) -> bool:
         try:
             logger.info(f"Deleting GCP instance {instance_name}", extra={"instance_name": instance_name})
 
@@ -125,7 +125,7 @@ class GCPComputeClient:
             request.instance = instance_name
 
             operation = self.instances_client.delete(request=request)
-            self._wait_for_operation(operation.name)
+            await self._wait_for_operation(operation.name)
 
             logger.info(f"Successfully deleted instance {instance_name}")
             return True
@@ -175,7 +175,8 @@ class GCPComputeClient:
             logger.error(f"Error getting instance {instance_name} status: {e}")
             return None
 
-    def _wait_for_operation(self, operation_name: str, timeout: int = 300):
+    async def _wait_for_operation(self, operation_name: str, timeout: int = 300):
+        import asyncio
         start_time = time.time()
 
         while True:
@@ -195,7 +196,7 @@ class GCPComputeClient:
             if time.time() - start_time > timeout:
                 raise TimeoutError(f"Operation {operation_name} timed out after {timeout}s")
 
-            time.sleep(2)
+            await asyncio.sleep(2)
 
     def list_managed_instances(self) -> list[str]:
         try:
