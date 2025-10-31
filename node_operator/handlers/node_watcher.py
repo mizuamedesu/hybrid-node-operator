@@ -55,6 +55,42 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
                 asyncio.create_task(_create_failover_vm(node_name))
             else:
                 logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
+        else:
+            # 既にstateが存在する場合（再障害 or 前回のVM削除失敗）
+            logger.warning(f"Onprem node {node_name} failed again while state exists", extra={
+                "node_name": node_name,
+                "gcp_vm_name": current_state.gcp_vm_name,
+                "event": "onprem_node_re_failure"
+            })
+
+            # 古いVMが残っていれば削除
+            if current_state.gcp_vm_name:
+                logger.info(f"Cleaning up old VM {current_state.gcp_vm_name}")
+                gcp_client = get_gcp_client()
+                k8s_client = get_k8s_client()
+
+                # Kubernetesノードを削除
+                if k8s_client.get_node_by_name(current_state.gcp_vm_name):
+                    k8s_client.delete_node(current_state.gcp_vm_name)
+
+                # GCP VMを削除
+                if gcp_client.instance_exists(current_state.gcp_vm_name):
+                    gcp_client.delete_instance(current_state.gcp_vm_name)
+
+            # stateをクリーンアップして新規VM作成
+            state_manager.remove_node(node_name)
+
+            logger.info(f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating new VM")
+            await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
+
+            k8s_client = get_k8s_client()
+            still_not_ready = not k8s_client.is_node_ready(node_name)
+
+            if still_not_ready:
+                state_manager.add_failed_node(node_name)
+                asyncio.create_task(_create_failover_vm(node_name))
+            else:
+                logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
 
     else:
         if current_state is not None and not current_state.recovery_detected_at:
