@@ -235,9 +235,8 @@ async def create_failover_vm(node_name: str):
                 "event": "gcp_vm_created"
             })
 
-        state_manager.update_vm_created(node_name, vm_name)
-        asyncio.create_task(_wait_and_label_node(vm_name, node_name, onprem_labels))
-
+            state_manager.update_vm_created(node_name, vm_name)
+            asyncio.create_task(_wait_and_label_node(vm_name, node_name, onprem_labels))
         else:
             raise Exception("VM creation failed (check GCP API logs)")
 
