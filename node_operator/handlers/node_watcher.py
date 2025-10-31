@@ -259,7 +259,10 @@ async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
 
         logger.warning(f"Deleting failed VM {vm_name}")
         gcp_client = get_gcp_client()
-        if await gcp_client.delete_instance(vm_name):
-            logger.info(f"Deleted failed VM {vm_name}")
+        if gcp_client.instance_exists(vm_name):
+            if await gcp_client.delete_instance(vm_name):
+                logger.info(f"Deleted failed VM {vm_name}")
+            else:
+                logger.error(f"Failed to delete VM {vm_name}")
         else:
-            logger.error(f"Failed to delete VM {vm_name}")
+            logger.info(f"VM {vm_name} already deleted")

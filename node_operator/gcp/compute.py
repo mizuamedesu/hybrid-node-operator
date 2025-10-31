@@ -190,6 +190,10 @@ class GCPComputeClient:
             if operation.status == compute_v1.Operation.Status.DONE:
                 if operation.error:
                     errors = ", ".join([e.message for e in operation.error.errors])
+                    # リソースが見つからない場合は並行削除済みと見なして成功扱い
+                    if "was not found" in errors or "NOT_FOUND" in errors:
+                        logger.warning(f"Resource not found during operation (likely already deleted): {errors}")
+                        return
                     raise RuntimeError(f"Operation failed: {errors}")
                 return
 

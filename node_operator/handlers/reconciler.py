@@ -158,6 +158,12 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
 
             k8s_client.delete_node(gcp_node_name)
 
+            # 並行削除を防ぐため、削除前に存在確認
+            if not gcp_client.instance_exists(gcp_node_name):
+                logger.info(f"VM {gcp_node_name} already deleted (concurrent cleanup)")
+                state_manager.remove_node(onprem_node_name)
+                continue
+
             success = await gcp_client.delete_instance(gcp_node_name)
 
             if success:
