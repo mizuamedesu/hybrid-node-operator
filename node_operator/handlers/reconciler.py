@@ -237,26 +237,26 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
                     logger.info(f"Waiting for {gameserver_count} GameServer(s) to drain from {gcp_node_name}")
 
 
-    async def _schedule_startup_failover(node_name: str):
+async def _schedule_startup_failover(node_name: str):
+    logger.info(
+        f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating VM",
+        extra={"node_name": node_name, "source": "startup_reconciliation"}
+    )
+
+    await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
+
+    k8s_client = get_k8s_client()
+    still_not_ready = not k8s_client.is_node_ready(node_name)
+
+    if still_not_ready:
+        await create_failover_vm(node_name)
+    else:
+        state_manager = get_state_manager()
+        state_manager.remove_node(node_name)
         logger.info(
-            f"Waiting {NODE_FLAPPING_GRACE_SECONDS}s before creating VM",
-            extra={"node_name": node_name, "source": "startup_reconciliation"}
+            "Node recovered during startup grace period, cleaned up state",
+            extra={"node_name": node_name}
         )
-
-        await asyncio.sleep(NODE_FLAPPING_GRACE_SECONDS)
-
-        k8s_client = get_k8s_client()
-        still_not_ready = not k8s_client.is_node_ready(node_name)
-
-        if still_not_ready:
-            await create_failover_vm(node_name)
-        else:
-            state_manager = get_state_manager()
-            state_manager.remove_node(node_name)
-            logger.info(
-                "Node recovered during startup grace period, cleaned up state",
-                extra={"node_name": node_name}
-            )
 
 
 @kopf.on.startup()
