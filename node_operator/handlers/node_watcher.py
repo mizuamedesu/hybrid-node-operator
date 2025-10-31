@@ -16,11 +16,35 @@ NODE_FLAPPING_GRACE_SECONDS = int(os.getenv("NODE_FLAPPING_GRACE_SECONDS", "30")
 MAX_VM_CREATION_ATTEMPTS = int(os.getenv("MAX_VM_CREATION_ATTEMPTS", "3"))
 
 
-@kopf.on.event("", "v1", "nodes", labels={"node-type": "onpremise"})
-async def on_node_event(event: Dict[str, Any], **kwargs):
+@kopf.on.event("", "v1", "nodes")
+async def debug_all_node_events(event: Dict[str, Any], **kwargs):
     node = event.get("object", {})
     node_name = node.get("metadata", {}).get("name")
     event_type = event.get("type")
+    labels = node.get("metadata", {}).get("labels", {})
+    
+    logger.info(f"DEBUG: All node event", extra={
+        "node_name": node_name,
+        "event_type": event_type,
+        "labels": labels,
+        "has_onpremise_label": "node-type" in labels and labels.get("node-type") == "onpremise"
+    })
+
+
+@kopf.on.event("", "v1", "nodes", labels={"node-type": "onpremise"})
+async def on_node_event(event: Dict[str, Any], **kwargs):
+    logger.info("NODE EVENT HANDLER TRIGGEREDx)
+    
+    node = event.get("object", {})
+    node_name = node.get("metadata", {}).get("name")
+    event_type = event.get("type")
+
+    logger.info(f"Raw event data", extra={
+        "event_type": event_type,
+        "node_name": node_name,
+        "node_labels": node.get("metadata", {}).get("labels", {}),
+        "node_status": node.get("status", {}).get("conditions", [])
+    })
 
     if not node_name:
         logger.warning("Received node event without node name")
@@ -28,7 +52,7 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
 
     is_ready = _check_node_ready(node)
 
-    logger.debug(f"Node event received", extra={
+    logger.info(f"Node event received", extra={
         "node_name": node_name,
         "event_type": event_type,
         "is_ready": is_ready
@@ -95,7 +119,7 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
                     logger.info(f"Node {node_name} recovered during grace period, skipping VM creation")
             else:
                 # VM作成中または作成直後（復旧検知前）の重複イベント
-                logger.debug(f"Ignoring duplicate NotReady event for {node_name} (VM already being created)")
+                logger.info(f"Ignoring duplicate NotReady event for {node_name} (VM already being created)")
 
     else:
         if current_state is not None and not current_state.recovery_detected_at:
