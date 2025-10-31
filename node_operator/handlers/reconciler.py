@@ -28,6 +28,8 @@ async def reconcile_failovers(**kwargs):
 
     await _ensure_gcp_node_labels(state_manager, k8s_client)
     await _cleanup_out_of_service_taints(k8s_client)
+    await _detect_onprem_recovery(state_manager, k8s_client)
+    await _apply_taints_to_recovered_nodes(state_manager, k8s_client)
     await _cleanup_ready_vms(state_manager, k8s_client, gcp_client)
 
 
@@ -236,6 +238,23 @@ async def _cleanup_ready_vms(state_manager, k8s_client, gcp_client):
                 else:
                     logger.info(f"Waiting for {gameserver_count} GameServer(s) to drain from {gcp_node_name}")
 
+
+async def _detect_onprem_recovery(state_manager, k8s_client):
+    """イベントを取り逃した場合でも定期的に復旧を検知する"""
+    failed_nodes = state_manager.get_all_failed_nodes()
+
+    for node_name, state in failed_nodes.items():
+        if state.recovery_detected_at:
+            continue
+
+        is_ready = k8s_client.is_node_ready(node_name)
+
+        if is_ready:
+            logger.info(
+                "Detected onprem node recovery during reconciliation",
+                extra={"node_name": node_name}
+            )
+            state_manager.update_recovery_detected(node_name)
 
 async def _schedule_startup_failover(node_name: str):
     logger.info(
