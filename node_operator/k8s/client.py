@@ -152,19 +152,36 @@ class KubernetesClient:
                 return False
 
     def count_gameserver_pods_on_node(self, node_name: str) -> int:
-        """指定ノード上のGameServer Pod数をカウント"""
+        """指定ノード上のAllocated状態のGameServer数をカウント"""
         try:
-            pods = self.core_v1.list_pod_for_all_namespaces(
-                field_selector=f"spec.nodeName={node_name}",
-                label_selector="agones.dev/role=gameserver"
+            # GameServerカスタムリソースを全namespaceから取得
+            gameservers = self.custom_objects_api.list_cluster_custom_object(
+                group="agones.dev",
+                version="v1",
+                plural="gameservers"
             )
 
-            count = len(pods.items)
-            logger.debug(f"Node {node_name} has {count} GameServer pods")
-            return count
+            allocated_count = 0
+            total_count = 0
+
+            for gs in gameservers.get("items", []):
+                # このノード上のGameServerか確認
+                gs_node_name = gs.get("status", {}).get("nodeName")
+                if gs_node_name == node_name:
+                    total_count += 1
+                    # Allocated状態のみカウント
+                    state = gs.get("status", {}).get("state")
+                    if state == "Allocated":
+                        allocated_count += 1
+
+            logger.debug(
+                f"Node {node_name} has {allocated_count} Allocated GameServers "
+                f"(total: {total_count})"
+            )
+            return allocated_count
 
         except ApiException as e:
-            logger.error(f"Error counting GameServer pods on node {node_name}: {e}")
+            logger.error(f"Error counting GameServers on node {node_name}: {e}")
             return 999
 
     async def wait_for_node_join(self, expected_node_name: str, timeout_seconds: int = 300) -> bool:
