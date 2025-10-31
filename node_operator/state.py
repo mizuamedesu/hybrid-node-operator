@@ -14,6 +14,7 @@ class NodeFailoverState:
     gcp_vm_created: bool = False
     recovery_detected_at: Optional[str] = None
     taint_applied: bool = False
+    taint_applied_at: Optional[str] = None
     vm_creation_attempts: int = 0
     last_error: Optional[str] = None
 
@@ -82,7 +83,11 @@ class StateManager:
             return
 
         state.taint_applied = True
-        logger.info("Taint applied to temporary GCP node", extra={"node_name": node_name})
+        state.taint_applied_at = datetime.now(timezone.utc).isoformat()
+        logger.info("Taint applied to onprem node", extra={
+            "node_name": node_name,
+            "taint_applied_at": state.taint_applied_at
+        })
 
     def increment_vm_creation_attempts(self, node_name: str):
         state = self._failed_nodes.get(node_name)

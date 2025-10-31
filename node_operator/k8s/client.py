@@ -121,6 +121,48 @@ class KubernetesClient:
             logger.error(f"Error adding taint to node {node_name}: {e}")
             return False
 
+    def apply_out_of_service_taint(self, node_name: str) -> bool:
+        return self.add_node_taint(
+            node_name=node_name,
+            key="node.kubernetes.io/out-of-service",
+            value="nodeshutdown",
+            effect="NoExecute"
+        )
+
+    def remove_node_taint(self, node_name: str, taint_key: str) -> bool:
+        try:
+            node = self.core_v1.read_node(node_name)
+
+            taints = node.spec.taints or []
+            original_count = len(taints)
+
+            taints = [t for t in taints if t.key != taint_key]
+
+            if len(taints) == original_count:
+                logger.info(f"Taint {taint_key} not found on node {node_name}")
+                return True
+
+            body = {
+                "spec": {
+                    "taints": [
+                        {
+                            "key": t.key,
+                            "value": t.value,
+                            "effect": t.effect
+                        }
+                        for t in taints
+                    ] if taints else None
+                }
+            }
+            self.core_v1.patch_node(node_name, body)
+
+            logger.info(f"Removed taint {taint_key} from node {node_name}")
+            return True
+
+        except ApiException as e:
+            logger.error(f"Error removing taint from node {node_name}: {e}")
+            return False
+
     def drain_node(self, node_name: str) -> bool:
         """Cordon（スケジュール不可）に設定"""
         try:

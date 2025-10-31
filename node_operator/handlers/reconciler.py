@@ -25,7 +25,7 @@ async def reconcile_failovers(**kwargs):
     gcp_client = get_gcp_client()
 
     await _ensure_gcp_node_labels(state_manager, k8s_client)
-    await _apply_taints_to_recovered_nodes(state_manager, k8s_client)
+    await _cleanup_out_of_service_taints(k8s_client)
     await _cleanup_ready_vms(state_manager, k8s_client, gcp_client)
 
 
@@ -74,6 +74,43 @@ async def _ensure_gcp_node_labels(state_manager, k8s_client):
                 logger.info(f"Successfully applied labels to {gcp_vm_name}")
             else:
                 logger.error(f"Failed to apply labels to {gcp_vm_name}")
+
+
+async def _cleanup_out_of_service_taints(k8s_client):
+    """Ready状態のノードからout-of-service taintを削除（Operator再起動時のクリーンアップ）"""
+    try:
+        # 全ノードを取得
+        nodes = k8s_client.core_v1.list_node()
+
+        for node in nodes.items:
+            node_name = node.metadata.name
+
+            # out-of-service taintが付いているか確認
+            taints = node.spec.taints or []
+            has_out_of_service_taint = any(
+                t.key == "node.kubernetes.io/out-of-service"
+                for t in taints
+            )
+
+            if not has_out_of_service_taint:
+                continue
+
+            # ノードがReady状態か確認
+            is_ready = k8s_client.is_node_ready(node_name)
+
+            if is_ready:
+                logger.info(f"Removing stale out-of-service taint from ready node {node_name}")
+                success = k8s_client.remove_node_taint(node_name, "node.kubernetes.io/out-of-service")
+
+                if success:
+                    logger.info(f"Successfully removed out-of-service taint from {node_name}")
+                else:
+                    logger.error(f"Failed to remove out-of-service taint from {node_name}")
+            else:
+                logger.debug(f"Node {node_name} has out-of-service taint and is NotReady (expected state)")
+
+    except Exception as e:
+        logger.error(f"Error during out-of-service taint cleanup: {e}")
 
 
 async def _apply_taints_to_recovered_nodes(state_manager, k8s_client):
@@ -212,76 +249,85 @@ async def on_startup(**kwargs):
         node_name = node.metadata.name
         is_ready = k8s_client.is_node_ready(node_name)
 
-        if not is_ready:
-            logger.info(f"Found NotReady onprem node during startup: {node_name}")
+        # GCP VMを検索（Ready/NotReadyに関わらず）
+        gcp_nodes = k8s_client.list_nodes_by_label("node-type=gcp-temporary")
 
-            gcp_nodes = k8s_client.list_nodes_by_label("node-type=gcp-temporary")
+        matching_vm = None
+        for gcp_node in gcp_nodes:
+            gcp_node_name = gcp_node.metadata.name
+            if node_name.lower().replace("_", "-") in gcp_node_name:
+                matching_vm = gcp_node_name
+                break
 
-            matching_vm = None
-            for gcp_node in gcp_nodes:
-                gcp_node_name = gcp_node.metadata.name
-                if node_name.lower().replace("_", "-") in gcp_node_name:
-                    matching_vm = gcp_node_name
+        if not matching_vm:
+            gcp_client = get_gcp_client()
+            vm_prefix = f"gcp-temp-{node_name.lower().replace('_', '-')}"
+            instances = gcp_client.list_instances()
+            for instance in instances:
+                if instance.name.startswith(vm_prefix):
+                    matching_vm = instance.name
+                    logger.info(f"Found VM {matching_vm} in GCP (not yet joined to cluster)")
                     break
 
-            if not matching_vm:
-                gcp_client = get_gcp_client()
-                vm_prefix = f"gcp-temp-{node_name.lower().replace('_', '-')}"
-                instances = gcp_client.list_instances()
-                for instance in instances:
-                    if instance.name.startswith(vm_prefix):
-                        matching_vm = instance.name
-                        logger.info(f"Found VM {matching_vm} in GCP (not yet joined to cluster)")
+        if matching_vm:
+            logger.info(f"Found existing temporary VM {matching_vm} for {node_name} (onprem_ready={is_ready})")
+
+            # stateを再構築
+            state = state_manager.add_failed_node(node_name)
+            state_manager.update_vm_created(node_name, matching_vm)
+
+            # オンプレノードがReady状態なら、recovery_detected_atをセット
+            if is_ready:
+                state_manager.update_recovery_detected(node_name)
+                logger.info(f"Onprem node {node_name} is Ready, marked as recovered")
+
+            # オンプレノードにout-of-service taintが付いているか確認
+            onprem_node = k8s_client.get_node_by_name(node_name)
+            if onprem_node and onprem_node.spec.taints:
+                for taint in onprem_node.spec.taints:
+                    if taint.key == "node.kubernetes.io/out-of-service":
+                        state_manager.update_taint_applied(node_name)
+                        logger.info(f"Detected out-of-service taint on {node_name}")
                         break
 
-            if matching_vm:
-                logger.info(f"Found existing temporary VM {matching_vm} for {node_name}")
+            # GCPノードのラベルを確認・適用
+            gcp_node = k8s_client.get_node_by_name(matching_vm)
+            if gcp_node:
+                current_labels = gcp_node.metadata.labels or {}
 
-                state = state_manager.add_failed_node(node_name)
-                state_manager.update_vm_created(node_name, matching_vm)
+                # オンプレノードからコピーするラベルを取得
+                copy_label_keys = os.getenv("GCP_NODE_COPY_LABELS", "").split(",")
+                copy_label_keys = [key.strip() for key in copy_label_keys if key.strip()]
 
-                gcp_node = k8s_client.get_node_by_name(matching_vm)
-                if gcp_node:
-                    if gcp_node.spec.taints:
-                        for taint in gcp_node.spec.taints:
-                            if taint.key == "temporary-node":
-                                state_manager.update_taint_applied(node_name)
-                                break
+                onprem_labels = {}
+                if onprem_node:
+                    all_labels = k8s_client.get_node_custom_labels(node_name)
+                    onprem_labels = {k: v for k, v in all_labels.items() if k in copy_label_keys}
 
-                    # ラベルの確認と不足分の適用
-                    current_labels = gcp_node.metadata.labels or {}
+                # 期待されるラベルを構築
+                expected_labels = {
+                    "node-type": "gcp-temporary",
+                    "node-location": "gcp"
+                }
+                expected_labels.update(onprem_labels)
 
-                    # オンプレノードからコピーするラベルを取得
-                    copy_label_keys = os.getenv("GCP_NODE_COPY_LABELS", "").split(",")
-                    copy_label_keys = [key.strip() for key in copy_label_keys if key.strip()]
+                # 不足しているラベルを確認
+                missing_labels = {k: v for k, v in expected_labels.items()
+                                 if current_labels.get(k) != v}
 
-                    onprem_node = k8s_client.get_node_by_name(node_name)
-                    onprem_labels = {}
-                    if onprem_node:
-                        all_labels = k8s_client.get_node_custom_labels(node_name)
-                        onprem_labels = {k: v for k, v in all_labels.items() if k in copy_label_keys}
+                if missing_labels:
+                    logger.info(f"Applying missing labels to {matching_vm}: {missing_labels}")
+                    success = k8s_client.patch_node_labels(matching_vm, expected_labels)
+                    if success:
+                        logger.info(f"Successfully applied labels to {matching_vm}")
+                    else:
+                        logger.error(f"Failed to apply labels to {matching_vm}")
 
-                    # 期待されるラベルを構築
-                    expected_labels = {
-                        "node-type": "gcp-temporary",
-                        "node-location": "gcp"
-                    }
-                    expected_labels.update(onprem_labels)
+        elif not is_ready:
+            logger.info(f"No existing VM found for NotReady node {node_name}, will create one")
 
-                    # 不足しているラベルを確認
-                    missing_labels = {k: v for k, v in expected_labels.items()
-                                     if current_labels.get(k) != v}
-
-                    if missing_labels:
-                        logger.info(f"Applying missing labels to {matching_vm}: {missing_labels}")
-                        success = k8s_client.patch_node_labels(matching_vm, expected_labels)
-                        if success:
-                            logger.info(f"Successfully applied labels to {matching_vm}")
-                        else:
-                            logger.error(f"Failed to apply labels to {matching_vm}")
-
-            else:
-                logger.info(f"No existing VM found for {node_name}, will create one")
+    # out-of-service taintのクリーンアップ（Ready状態のノードから削除）
+    await _cleanup_out_of_service_taints(k8s_client)
 
     logger.info("Startup state reconstruction complete")
 

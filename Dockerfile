@@ -19,5 +19,5 @@ COPY node_operator/ ./node_operator/
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
 
-# Run the operator
-CMD ["kopf", "run", "--standalone", "--liveness=http://0.0.0.0:8080/healthz", "node_operator/main.py"]
+# Run the operator with peering for high availability
+CMD ["kopf", "run", "--peering=node-failover-operator", "--liveness=http://0.0.0.0:8080/healthz", "node_operator/main.py"]

@@ -7,9 +7,12 @@ metadata:
   labels:
     app: node-failover-operator
 spec:
-  replicas: 1
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   selector:
     matchLabels:
       app: node-failover-operator
@@ -19,6 +22,16 @@ spec:
         app: node-failover-operator
     spec:
       serviceAccountName: node-failover-operator
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: node-failover-operator
+                topologyKey: kubernetes.io/hostname
 
       nodeSelector:
         node-type: gcp-permanent
@@ -42,6 +55,14 @@ spec:
           env:
             - name: GOOGLE_APPLICATION_CREDENTIALS
               value: /var/secrets/google/key.json
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
 
           volumeMounts:
             - name: gcp-credentials

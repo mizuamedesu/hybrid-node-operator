@@ -30,6 +30,14 @@ rules:
     resources: ["events"]
     verbs: ["create", "patch"]
 
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  - apiGroups: ["kopf.dev"]
+    resources: ["clusterkopfpeerings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
   - apiGroups: ["agones.dev"]
     resources: ["gameservers"]
     verbs: ["get", "list", "watch"]

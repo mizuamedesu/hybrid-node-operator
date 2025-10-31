@@ -106,6 +106,14 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
 
             state_manager.update_recovery_detected(node_name)
 
+            if current_state.taint_applied:
+                k8s_client = get_k8s_client()
+                success = k8s_client.remove_node_taint(node_name, "node.kubernetes.io/out-of-service")
+                if success:
+                    logger.info(f"Removed out-of-service taint from recovered node {node_name}")
+                else:
+                    logger.warning(f"Failed to remove out-of-service taint from {node_name}")
+
 
 def _check_node_ready(node: Dict[str, Any]) -> bool:
     status = node.get("status", {})
@@ -204,7 +212,7 @@ async def _create_failover_vm(node_name: str):
             })
 
             state_manager.update_vm_created(node_name, vm_name)
-            asyncio.create_task(_wait_and_label_node(vm_name, onprem_labels))
+            asyncio.create_task(_wait_and_label_node(vm_name, node_name, onprem_labels))
 
         else:
             raise Exception("VM creation failed (check GCP API logs)")
@@ -226,9 +234,12 @@ async def _create_failover_vm(node_name: str):
             await _create_failover_vm(node_name)
 
 
-async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
-    """ノード参加待機とラベル付与"""
+async def _wait_and_label_node(vm_name: str, onprem_node_name: str, onprem_labels: Dict[str, str]):
+    """ノード参加待機、ラベル付与、out-of-service taint付与"""
+    from .state import get_state_manager
+
     k8s_client = get_k8s_client()
+    state_manager = get_state_manager()
 
     logger.info(f"Waiting for node {vm_name} to join the cluster...")
 
@@ -251,6 +262,35 @@ async def _wait_and_label_node(vm_name: str, onprem_labels: Dict[str, str]):
             })
         else:
             logger.error(f"Failed to label node {vm_name}")
+
+        grace_period = 300
+        logger.info(f"Waiting {grace_period}s grace period for potential node recovery...")
+        await asyncio.sleep(grace_period)
+
+        onprem_still_not_ready = not k8s_client.is_node_ready(onprem_node_name)
+
+        if onprem_still_not_ready:
+            logger.warning(f"Onprem node {onprem_node_name} still NotReady after grace period, applying out-of-service taint")
+
+            success = k8s_client.apply_out_of_service_taint(onprem_node_name)
+
+            if success:
+                state_manager.update_taint_applied(onprem_node_name)
+                logger.info(f"Applied out-of-service taint to {onprem_node_name}", extra={
+                    "onprem_node": onprem_node_name,
+                    "gcp_node": vm_name,
+                    "event": "out_of_service_taint_applied"
+                })
+
+                await asyncio.sleep(60)
+
+                gameserver_count = k8s_client.count_gameserver_pods_on_node(onprem_node_name)
+                logger.info(f"GameServers remaining on {onprem_node_name}: {gameserver_count}")
+            else:
+                logger.error(f"Failed to apply out-of-service taint to {onprem_node_name}")
+        else:
+            logger.info(f"Onprem node {onprem_node_name} recovered during grace period, skipping taint")
+
     else:
         logger.error(f"Node {vm_name} did not join within timeout", extra={
             "vm_name": vm_name,
