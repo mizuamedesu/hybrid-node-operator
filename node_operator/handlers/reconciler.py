@@ -17,10 +17,10 @@ GAMESERVER_MAX_WAIT_SECONDS = int(os.getenv("GAMESERVER_MAX_WAIT_HOURS", "3")) *
 NODE_FLAPPING_GRACE_SECONDS = int(os.getenv("NODE_FLAPPING_GRACE_SECONDS", "30"))
 
 
-@kopf.timer("", "v1", "nodes", interval=RECONCILIATION_INTERVAL, idle=30)
+@kopf.timer('nodes', interval=RECONCILIATION_INTERVAL, idle=RECONCILIATION_INTERVAL)
 async def reconcile_failovers(**kwargs):
     """定期的なフェイルオーバー状態のReconciliation"""
-    logger.debug("Running reconciliation")
+    logger.info("Running periodic reconciliation")
 
     state_manager = get_state_manager()
     k8s_client = get_k8s_client()
