@@ -287,6 +287,7 @@ async def on_startup(**kwargs):
     k8s_client = get_k8s_client()
 
     onprem_nodes = k8s_client.list_nodes_by_label("node-type=onpremise")
+    logger.info(f"Found {len(onprem_nodes)} onprem nodes to check")
 
     for node in onprem_nodes:
         node_name = node.metadata.name
@@ -374,9 +375,11 @@ async def on_startup(**kwargs):
 
             if state_manager.get_state(node_name) is None:
                 state_manager.add_failed_node(node_name)
+                logger.info(f"Added {node_name} to failed nodes state")
             else:
                 logger.debug(f"State already present for {node_name}, skipping re-registration")
 
+            logger.info(f"Scheduling startup failover task for {node_name}")
             asyncio.create_task(_schedule_startup_failover(node_name))
 
     # out-of-service taintのクリーンアップ（Ready状態のノードから削除）
