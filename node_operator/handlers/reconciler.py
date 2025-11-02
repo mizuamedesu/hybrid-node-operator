@@ -16,21 +16,29 @@ ONPREM_RECOVERY_WAIT_SECONDS = int(os.getenv("ONPREM_RECOVERY_WAIT_MINUTES", "10
 GAMESERVER_MAX_WAIT_SECONDS = int(os.getenv("GAMESERVER_MAX_WAIT_HOURS", "3")) * 3600
 NODE_FLAPPING_GRACE_SECONDS = int(os.getenv("NODE_FLAPPING_GRACE_SECONDS", "30"))
 
+_reconciliation_task = None
 
-@kopf.timer('nodes', interval=RECONCILIATION_INTERVAL, idle=RECONCILIATION_INTERVAL)
-async def reconcile_failovers(**kwargs):
-    """定期的なフェイルオーバー状態のReconciliation"""
-    logger.info("Running periodic reconciliation")
 
-    state_manager = get_state_manager()
-    k8s_client = get_k8s_client()
-    gcp_client = get_gcp_client()
+async def _reconciliation_loop():
+    while True:
+        try:
+            logger.info("Running periodic reconciliation")
 
-    await _ensure_gcp_node_labels(state_manager, k8s_client)
-    await _cleanup_out_of_service_taints(k8s_client)
-    await _detect_onprem_recovery(state_manager, k8s_client)
-    await _apply_taints_to_recovered_nodes(state_manager, k8s_client)
-    await _cleanup_ready_vms(state_manager, k8s_client, gcp_client)
+            state_manager = get_state_manager()
+            k8s_client = get_k8s_client()
+            gcp_client = get_gcp_client()
+
+            await _ensure_gcp_node_labels(state_manager, k8s_client)
+            await _cleanup_out_of_service_taints(k8s_client)
+            await _detect_onprem_recovery(state_manager, k8s_client)
+            await _apply_taints_to_recovered_nodes(state_manager, k8s_client)
+            await _cleanup_ready_vms(state_manager, k8s_client, gcp_client)
+            
+            logger.info("Periodic reconciliation completed")
+        except Exception as e:
+            logger.error(f"Error during reconciliation: {e}", exc_info=True)
+        
+        await asyncio.sleep(RECONCILIATION_INTERVAL)
 
 
 async def _ensure_gcp_node_labels(state_manager, k8s_client):
@@ -281,6 +289,8 @@ async def _schedule_startup_failover(node_name: str):
 @kopf.on.startup()
 async def on_startup(**kwargs):
     """Operator起動時の状態再構築"""
+    global _reconciliation_task
+    
     logger.info("Operator starting up, reconstructing state...")
 
     state_manager = get_state_manager()
@@ -386,6 +396,10 @@ async def on_startup(**kwargs):
     await _cleanup_out_of_service_taints(k8s_client)
 
     logger.info("Startup state reconstruction complete")
+    
+    # リコンシリエーションループを起動
+    _reconciliation_task = asyncio.create_task(_reconciliation_loop())
+    logger.info("Started reconciliation background task")
 
 
 @kopf.on.cleanup()
