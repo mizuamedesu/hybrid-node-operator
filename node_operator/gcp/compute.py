@@ -91,6 +91,11 @@ class GCPComputeClient:
             instance.labels = labels or {}
             instance.labels["managed-by"] = "node-failover-operator"
 
+            # ネットワークタグ設定
+            tags = compute_v1.Tags()
+            tags.items = ["game-runner"]
+            instance.tags = tags
+
             logger.info(f"Creating GCP instance {instance_name}", extra={
                 "instance_name": instance_name,
                 "zone": self.zone,
