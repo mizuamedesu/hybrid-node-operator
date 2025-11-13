@@ -16,6 +16,23 @@ exec 2>&1
 
 echo "Starting node setup at $(date)"
 
+# GCEメタデータから情報を取得
+echo "Fetching GCE metadata..."
+PROJECT=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/project/project-id)
+ZONE=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/zone | cut -d'/' -f4)
+INSTANCE_NAME=$(curl -s -H "Metadata-Flavor: Google" http://metadata.google.internal/computeMetadata/v1/instance/name)
+
+echo "Instance info: $PROJECT/$ZONE/$INSTANCE_NAME"
+
+# kubelet設定ディレクトリを作成
+mkdir -p /var/lib/kubelet
+
+# cloud-providerとprovider-idをkubelet起動オプションに設定
+echo "Configuring kubelet with cloud-provider settings..."
+cat > /etc/default/kubelet << EOF
+KUBELET_EXTRA_ARGS="--cloud-provider=external --provider-id=gce://$PROJECT/$ZONE/$INSTANCE_NAME"
+EOF
+
 sleep 5
 
 echo "Joining Kubernetes cluster..."
