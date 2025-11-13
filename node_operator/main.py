@@ -77,6 +77,14 @@ def initialize_clients():
 from node_operator.handlers import node_event_handler, nodefailover_handler, reconciliation
 
 
+@kopf.on.startup()
+def configure_peering(settings: kopf.OperatorSettings, **_):
+    import random
+    settings.peering.priority = random.randint(0, 32767)
+    settings.peering.name = "node-failover-operator"
+    logging.info(f"Configured peering with priority {settings.peering.priority}")
+
+
 @kopf.on.login()
 def login(**kwargs):
     return kopf.login_via_client(**kwargs)
@@ -97,8 +105,7 @@ def main():
 
     kopf.run(
         clusterwide=True,
-        liveness_endpoint="http://0.0.0.0:8080/healthz",
-        standalone=False 
+        liveness_endpoint="http://0.0.0.0:8080/healthz"
     )
 
 if __name__ == "__main__":
