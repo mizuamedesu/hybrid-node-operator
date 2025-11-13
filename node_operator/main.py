@@ -95,7 +95,11 @@ def main():
 
     logging.info("Node Failover Operator initialization complete")
 
-    kopf.run(clusterwide=True, liveness_endpoint="http://0.0.0.0:8080/healthz")
+    kopf.run(
+        clusterwide=True,
+        liveness_endpoint="http://0.0.0.0:8080/healthz",
+        standalone=False 
+    )
 
 if __name__ == "__main__":
     main()
