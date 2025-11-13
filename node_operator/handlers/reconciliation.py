@@ -159,6 +159,7 @@ async def _reconciliation_loop():
             crd = get_nodefailover_crd(k8s_client.custom_objects_api)
 
             await _detect_onprem_recovery(k8s_client, crd)
+            await _handle_recovering_phase(k8s_client, crd)
             await _cleanup_draining_vms(k8s_client, gcp_client, crd)
 
             logger.info("Periodic reconciliation completed")
@@ -167,6 +168,42 @@ async def _reconciliation_loop():
             logger.error(f"Error during reconciliation: {e}", exc_info=True)
 
         await asyncio.sleep(RECONCILIATION_INTERVAL)
+
+
+async def _handle_recovering_phase(k8s_client, crd):
+    """Recovering phaseのリソースをDraining phaseに移行"""
+    all_resources = crd.list_all()
+
+    for resource in all_resources:
+        status = resource.get("status", {})
+        phase = status.get("phase")
+
+        # Recovering phaseのリソースのみ処理
+        if phase != NodeFailoverPhase.RECOVERING:
+            continue
+
+        spec = resource.get("spec", {})
+        onprem_node_name = spec.get("onpremNodeName")
+
+        if not onprem_node_name:
+            continue
+
+        logger.info(f"Processing Recovering phase for {onprem_node_name}")
+
+        # out-of-service taintを削除（まだ残っている場合）
+        success = k8s_client.remove_node_taint(
+            onprem_node_name,
+            "node.kubernetes.io/out-of-service"
+        )
+
+        if success:
+            logger.info(f"Removed out-of-service taint from recovered node {onprem_node_name}")
+        else:
+            logger.debug(f"Taint already removed or node not found: {onprem_node_name}")
+
+        # Draining phaseに移行
+        crd.update_status(onprem_node_name, phase=NodeFailoverPhase.DRAINING)
+        logger.info(f"Transitioned {onprem_node_name} from Recovering to Draining phase")
 
 
 async def _cleanup_draining_vms(k8s_client, gcp_client, crd):
