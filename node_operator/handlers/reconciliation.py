@@ -158,6 +158,7 @@ async def _reconciliation_loop():
             gcp_client = get_gcp_client()
             crd = get_nodefailover_crd(k8s_client.custom_objects_api)
 
+            await _detect_onprem_recovery(k8s_client, crd)
             await _cleanup_draining_vms(k8s_client, gcp_client, crd)
 
             logger.info("Periodic reconciliation completed")
@@ -239,3 +240,61 @@ async def _cleanup_draining_vms(k8s_client, gcp_client, crd):
                     )
                 else:
                     logger.info(f"Waiting for {gameserver_count} GameServer(s) to drain from {gcp_vm_name}")
+
+
+async def _detect_onprem_recovery(k8s_client, crd):
+    """Active phaseのNodeFailoverリソースをチェックして、オンプレノードの復旧を検知"""
+    all_resources = crd.list_all()
+
+    for resource in all_resources:
+        status = resource.get("status", {})
+        phase = status.get("phase")
+
+        # Active phaseで、まだ復旧が検知されていないもののみ
+        if phase != NodeFailoverPhase.ACTIVE:
+            continue
+
+        recovery_detected_at = status.get("recoveryDetectedAt")
+        if recovery_detected_at:
+            # すでに復旧検知済み
+            continue
+
+        spec = resource.get("spec", {})
+        onprem_node_name = spec.get("onpremNodeName")
+
+        if not onprem_node_name:
+            continue
+
+        # オンプレノードがReadyか確認
+        is_ready = k8s_client.is_node_ready(onprem_node_name)
+
+        if is_ready:
+            logger.info(f"Detected onprem node recovery: {onprem_node_name}")
+
+            from datetime import datetime, timezone
+
+            crd.update_status(
+                onprem_node_name,
+                phase=NodeFailoverPhase.RECOVERING,
+                recovery_detected_at=datetime.now(timezone.utc).isoformat()
+            )
+
+            crd.set_condition(
+                onprem_node_name,
+                ConditionType.ONPREM_RECOVERED,
+                "True",
+                message="Onprem node has recovered"
+            )
+
+            success = k8s_client.remove_node_taint(
+                onprem_node_name,
+                "node.kubernetes.io/out-of-service"
+            )
+
+            if success:
+                logger.info(f"Removed out-of-service taint from recovered node {onprem_node_name}")
+            else:
+                logger.warning(f"Failed to remove out-of-service taint from {onprem_node_name}")
+
+            crd.update_status(onprem_node_name, phase=NodeFailoverPhase.DRAINING)
+            logger.info(f"Transitioned {onprem_node_name} to Draining phase")
