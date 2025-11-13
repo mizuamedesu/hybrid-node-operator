@@ -42,11 +42,11 @@ rules:
     resources: ["gameservers"]
     verbs: ["get", "list", "watch"]
 
-  - apiGroups: ["failover.k8s.io"]
+  - apiGroups: ["failover.operator.io"]
     resources: ["nodefailovers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-  - apiGroups: ["failover.k8s.io"]
+  - apiGroups: ["failover.operator.io"]
     resources: ["nodefailovers/status"]
     verbs: ["get", "update", "patch"]
 

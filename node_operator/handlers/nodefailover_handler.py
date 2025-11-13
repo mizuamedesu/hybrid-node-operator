@@ -21,7 +21,7 @@ NODE_FLAPPING_GRACE_SECONDS = int(os.getenv("NODE_FLAPPING_GRACE_SECONDS", "30")
 MAX_VM_CREATION_ATTEMPTS = int(os.getenv("MAX_VM_CREATION_ATTEMPTS", "3"))
 
 
-@kopf.on.create("failover.k8s.io", "v1", "nodefailovers")
+@kopf.on.create("failover.operator.io", "v1", "nodefailovers")
 async def on_nodefailover_create(spec, name, status, **kwargs):
     """NodeFailoverリソースが作成された時の処理"""
     logger.info(f"NodeFailover resource created: {name}")
@@ -47,7 +47,7 @@ async def on_nodefailover_create(spec, name, status, **kwargs):
     await create_failover_vm(onprem_node_name, target_labels)
 
 
-@kopf.on.field("failover.k8s.io", "v1", "nodefailovers", field="status.phase")
+@kopf.on.field("failover.operator.io", "v1", "nodefailovers", field="status.phase")
 async def on_phase_change(old, new, spec, name, **kwargs):
     """Phaseが変更された時の処理"""
     logger.info(f"NodeFailover {name} phase changed: {old} -> {new}")

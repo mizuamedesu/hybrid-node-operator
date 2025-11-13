@@ -6,7 +6,7 @@ from kubernetes.client.rest import ApiException
 logger = logging.getLogger(__name__)
 
 # CRD定義
-GROUP = "failover.k8s.io"
+GROUP = "failover.operator.io"
 VERSION = "v1"
 PLURAL = "nodefailovers"
 
