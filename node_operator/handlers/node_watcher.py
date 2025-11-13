@@ -7,6 +7,7 @@ import kopf
 from node_operator.state import get_state_manager
 from node_operator.k8s.client import get_k8s_client
 from node_operator.k8s.token import get_token_generator
+from node_operator.k8s.lock import DistributedLock
 from node_operator.gcp.compute import get_gcp_client
 from node_operator.gcp.cloud_init import generate_startup_script, generate_vm_name
 
@@ -170,9 +171,46 @@ async def create_failover_vm(node_name: str):
         })
         return
 
-    state_manager.increment_vm_creation_attempts(node_name)
+    # 分散ロックを取得（複数Operator Pod対策）
+    k8s_client = get_k8s_client()
+    lock = DistributedLock(k8s_client.core_v1, k8s_client.coordination_v1)
+    lock_resource = f"vm-create-{node_name}"
+
+    if not lock.acquire_lock(lock_resource, timeout_seconds=60):
+        logger.warning(f"Could not acquire lock for VM creation of {node_name}, another operator may be handling it")
+        return
 
     try:
+        # ロック取得後、再度状態をチェック
+        state = state_manager.get_state(node_name)
+        if not state:
+            logger.error(f"Cannot create VM: no state found for node {node_name}")
+            return
+
+        if state.gcp_vm_created:
+            logger.info(f"VM already created for node {node_name} (detected after lock), skipping")
+            return
+
+        state_manager.increment_vm_creation_attempts(node_name)
+
+        gcp_client = get_gcp_client()
+
+        # VM作成前に、同じノード用の既存VMがないかチェック（追加の安全確認）
+        sanitized_node_name = node_name.lower().replace("_", "-")
+        sanitized_node_name = "".join(c for c in sanitized_node_name if c.isalnum() or c == "-")
+        if not sanitized_node_name[0].isalpha():
+            sanitized_node_name = "node-" + sanitized_node_name
+        vm_prefix = f"gcp-temp-{sanitized_node_name}"
+
+        instances = gcp_client.list_instances()
+        existing_vm = None
+        for instance in instances:
+            if instance.name.startswith(vm_prefix):
+                existing_vm = instance.name
+                logger.info(f"Found existing VM {existing_vm} for node {node_name}, skipping creation")
+                state_manager.update_vm_created(node_name, existing_vm)
+                return
+
         vm_name = generate_vm_name(node_name)
 
         logger.info(f"Creating GCP VM for failed node {node_name}", extra={
@@ -180,8 +218,6 @@ async def create_failover_vm(node_name: str):
             "vm_name": vm_name,
             "attempt": state.vm_creation_attempts
         })
-
-        gcp_client = get_gcp_client()
 
         if gcp_client.instance_exists(vm_name):
             logger.info(f"VM {vm_name} already exists, marking as created")
@@ -255,6 +291,10 @@ async def create_failover_vm(node_name: str):
             logger.info(f"Retrying VM creation in {delay}s...")
             await asyncio.sleep(delay)
             await create_failover_vm(node_name)
+
+    finally:
+        # VM作成処理終了時にロックを解放
+        lock.release_lock(lock_resource)
 
 
 async def _wait_and_label_node(vm_name: str, onprem_node_name: str, onprem_labels: Dict[str, str]):

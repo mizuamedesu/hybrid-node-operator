@@ -32,7 +32,7 @@ rules:
 
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
   - apiGroups: ["kopf.dev"]
     resources: ["clusterkopfpeerings"]
@@ -41,6 +41,14 @@ rules:
   - apiGroups: ["agones.dev"]
     resources: ["gameservers"]
     verbs: ["get", "list", "watch"]
+
+  - apiGroups: ["failover.k8s.io"]
+    resources: ["nodefailovers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - apiGroups: ["failover.k8s.io"]
+    resources: ["nodefailovers/status"]
+    verbs: ["get", "update", "patch"]
 
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]

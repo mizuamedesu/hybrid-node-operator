@@ -17,6 +17,7 @@ class KubernetesClient:
             logger.info("Loaded Kubernetes configuration from kubeconfig")
 
         self.core_v1 = client.CoreV1Api()
+        self.coordination_v1 = client.CoordinationV1Api()
         self.custom_objects_api = client.CustomObjectsApi()
 
     def is_node_ready(self, node_name: str) -> Optional[bool]:

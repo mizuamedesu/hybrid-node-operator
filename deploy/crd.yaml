@@ -1,0 +1,105 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: nodefailovers.failover.k8s.io
+spec:
+  group: failover.k8s.io
+  names:
+    kind: NodeFailover
+    listKind: NodeFailoverList
+    plural: nodefailovers
+    singular: nodefailover
+    shortNames:
+      - nf
+  scope: Cluster
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - onpremNodeName
+              properties:
+                onpremNodeName:
+                  type: string
+                  description: "Name of the on-premise node that failed"
+                targetNodeLabels:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: "Labels to copy from on-prem node to GCP node"
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Creating
+                    - Active
+                    - Recovering
+                    - Draining
+                    - Completed
+                  description: "Current phase of failover process"
+                gcpVmName:
+                  type: string
+                  description: "Name of the GCP VM created for failover"
+                failedAt:
+                  type: string
+                  format: date-time
+                  description: "Timestamp when node failure was detected"
+                recoveryDetectedAt:
+                  type: string
+                  format: date-time
+                  description: "Timestamp when on-prem node recovery was detected"
+                vmCreationAttempts:
+                  type: integer
+                  description: "Number of VM creation attempts"
+                lastError:
+                  type: string
+                  description: "Last error message if any"
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - type
+                      - status
+                    properties:
+                      type:
+                        type: string
+                        description: "Type of condition (VMCreated, NodeJoined, TaintApplied, etc.)"
+                      status:
+                        type: string
+                        enum:
+                          - "True"
+                          - "False"
+                          - "Unknown"
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: OnPrem Node
+          type: string
+          jsonPath: .spec.onpremNodeName
+        - name: GCP VM
+          type: string
+          jsonPath: .status.gcpVmName
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
