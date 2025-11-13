@@ -184,13 +184,24 @@ async def _handle_recovering_phase(k8s_client, crd):
 
         spec = resource.get("spec", {})
         onprem_node_name = spec.get("onpremNodeName")
+        gcp_vm_name = status.get("gcpVmName")
 
-        if not onprem_node_name:
+        if not onprem_node_name or not gcp_vm_name:
             continue
 
         logger.info(f"Processing Recovering phase for {onprem_node_name}")
 
-        # out-of-service taintを削除（まだ残っている場合）
+        # 1. GCP一時ノードをcordon（新しいPodの配置を防ぐ）
+        gcp_node = k8s_client.get_node_by_name(gcp_vm_name)
+        if gcp_node:
+            k8s_client.cordon_node(gcp_vm_name)
+
+        # 2. GCP一時ノード上のReady GameServerを削除
+        deleted_count = k8s_client.delete_ready_gameservers_on_node(gcp_vm_name)
+        if deleted_count > 0:
+            logger.info(f"Deleted {deleted_count} Ready GameServer(s) from temporary node {gcp_vm_name}")
+
+        # 3. out-of-service taintを削除（まだ残っている場合）
         success = k8s_client.remove_node_taint(
             onprem_node_name,
             "node.kubernetes.io/out-of-service"
@@ -201,7 +212,7 @@ async def _handle_recovering_phase(k8s_client, crd):
         else:
             logger.debug(f"Taint already removed or node not found: {onprem_node_name}")
 
-        # Draining phaseに移行
+        # 4. Draining phaseに移行
         crd.update_status(onprem_node_name, phase=NodeFailoverPhase.DRAINING)
         logger.info(f"Transitioned {onprem_node_name} from Recovering to Draining phase")
 

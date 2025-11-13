@@ -312,6 +312,65 @@ class KubernetesClient:
             logger.error(f"Error getting labels for node {node_name}: {e}")
             return {}
 
+    def cordon_node(self, node_name: str) -> bool:
+        """ノードをcordon（スケジューリング無効化）"""
+        try:
+            node = self.core_v1.read_node(node_name)
+            node.spec.unschedulable = True
+            self.core_v1.patch_node(node_name, node)
+            logger.info(f"Successfully cordoned node {node_name}")
+            return True
+        except ApiException as e:
+            logger.error(f"Error cordoning node {node_name}: {e}")
+            return False
+
+    def delete_ready_gameservers_on_node(self, node_name: str) -> int:
+        """指定ノード上のReady状態のGameServerを削除
+
+        Returns:
+            削除したGameServerの数
+        """
+        try:
+            gameservers = self.custom_objects_api.list_cluster_custom_object(
+                group="agones.dev",
+                version="v1",
+                plural="gameservers"
+            )
+
+            deleted_count = 0
+
+            for gs in gameservers.get("items", []):
+                gs_node_name = gs.get("status", {}).get("nodeName")
+                state = gs.get("status", {}).get("state")
+
+                if gs_node_name == node_name and state == "Ready":
+                    gs_name = gs["metadata"]["name"]
+                    gs_namespace = gs["metadata"]["namespace"]
+
+                    try:
+                        self.custom_objects_api.delete_namespaced_custom_object(
+                            group="agones.dev",
+                            version="v1",
+                            namespace=gs_namespace,
+                            plural="gameservers",
+                            name=gs_name
+                        )
+                        logger.info(f"Deleted Ready GameServer {gs_namespace}/{gs_name} from node {node_name}")
+                        deleted_count += 1
+                    except ApiException as e:
+                        logger.error(f"Error deleting GameServer {gs_namespace}/{gs_name}: {e}")
+
+            if deleted_count > 0:
+                logger.info(f"Deleted {deleted_count} Ready GameServer(s) from node {node_name}")
+            else:
+                logger.debug(f"No Ready GameServers found on node {node_name}")
+
+            return deleted_count
+
+        except ApiException as e:
+            logger.error(f"Error listing GameServers on node {node_name}: {e}")
+            return 0
+
 
 _k8s_client: Optional[KubernetesClient] = None
 

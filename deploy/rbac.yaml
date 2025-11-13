@@ -40,7 +40,7 @@ rules:
 
   - apiGroups: ["agones.dev"]
     resources: ["gameservers"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "delete"]
 
   - apiGroups: ["failover.operator.io"]
     resources: ["nodefailovers"]
