@@ -337,12 +337,24 @@ async def on_startup(**kwargs):
 
             # オンプレノードにout-of-service taintが付いているか確認
             onprem_node = k8s_client.get_node_by_name(node_name)
+            taint_exists = False
             if onprem_node and onprem_node.spec.taints:
                 for taint in onprem_node.spec.taints:
                     if taint.key == "node.kubernetes.io/out-of-service":
                         state_manager.update_taint_applied(node_name)
                         logger.info(f"Detected out-of-service taint on {node_name}")
+                        taint_exists = True
                         break
+
+            # VMが既に存在し、オンプレノードがNotReadyで、taintが未適用の場合は即座に適用
+            if not is_ready and not taint_exists:
+                logger.info(f"Applying out-of-service taint to NotReady node {node_name} (existing VM found)")
+                success = k8s_client.apply_out_of_service_taint(node_name)
+                if success:
+                    state_manager.update_taint_applied(node_name)
+                    logger.info(f"Applied out-of-service taint to {node_name}")
+                else:
+                    logger.error(f"Failed to apply out-of-service taint to {node_name}")
 
             # GCPノードのラベルを確認・適用
             gcp_node = k8s_client.get_node_by_name(matching_vm)
