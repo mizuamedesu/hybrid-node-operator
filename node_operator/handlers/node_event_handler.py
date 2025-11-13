@@ -20,7 +20,7 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
 
     is_ready = _check_node_ready(node)
 
-    logger.debug(f"Node event: {node_name}, type={event_type}, ready={is_ready}")
+    logger.info(f"Node event: {node_name}, type={event_type}, ready={is_ready}")
 
     if not is_ready:
         # NotReadyノード検出
