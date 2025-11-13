@@ -31,8 +31,15 @@ async def on_node_event(event: Dict[str, Any], **kwargs):
         existing = crd.get(node_name)
 
         if existing:
-            logger.debug(f"NodeFailover resource already exists for {node_name}")
-            return
+            status = existing.get("status", {})
+            phase = status.get("phase")
+
+            if phase == "Completed":
+                logger.info(f"Deleting completed NodeFailover resource for re-failover: {node_name}")
+                crd.delete(node_name)
+            else:
+                logger.debug(f"NodeFailover resource already exists for {node_name} (phase: {phase})")
+                return
 
         # 新規NodeFailoverリソースを作成
         logger.info(f"Creating NodeFailover resource for NotReady node {node_name}")
