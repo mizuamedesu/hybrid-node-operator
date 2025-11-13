@@ -132,7 +132,7 @@ class StateManager:
         return [
             node_name
             for node_name, state in self._failed_nodes.items()
-            if state.taint_applied
+            if state.taint_applied and state.recovery_detected_at
         ]
 
 
